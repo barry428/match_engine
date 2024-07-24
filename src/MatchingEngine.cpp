@@ -8,10 +8,10 @@ MatchingEngine::MatchingEngine(zmq::socket_t& orderSocket, zmq::socket_t& result
         : orderSocket(orderSocket), resultSocket(resultSocket), bookSocket(bookSocket), running(false) {}
 
 void MatchingEngine::start() {
-    LOG_DEBUG("MatchingEngine starting.");
+    LOG_INFO("MatchingEngine starting.");
     running = true;
     run();
-    LOG_DEBUG("MatchingEngine started.");
+    LOG_INFO("MatchingEngine started.");
 }
 
 void MatchingEngine::stop() {
@@ -19,7 +19,7 @@ void MatchingEngine::stop() {
 }
 
 void MatchingEngine::run() {
-    LOG_DEBUG("MatchingEngine run.");
+    LOG_INFO("MatchingEngine run.");
     while (running) {
         try {
             zmq::message_t orderMessage;
@@ -41,7 +41,6 @@ void MatchingEngine::run() {
         } catch (const std::exception& e) {
             LOG_ERROR("Error in MatchingEngine run loop: " + std::string(e.what()));
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 

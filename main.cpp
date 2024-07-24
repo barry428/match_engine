@@ -10,6 +10,8 @@
 #include "DbConfig.h"
 #include "DbConnection.h"
 #include "Logger.h"
+#include "WebSocketServer.h"
+
 
 // 全局日志输出流
 namespace {
@@ -71,13 +73,18 @@ void startOrderGenerator(const DbConfig& config) {
     orderGenerator.generateOrders(100);
 }
 
-
+// 启动健康检查服务器
 void startHeal() {
-    // 启动健康检查服务器
-    // 创建 ZeroMQ 上下文
     zmq::context_t context(1);
     HealthCheckServer server("localhost", 8080, context, "tcp://localhost:12347");
     server.start();
+}
+
+// Kline行情服务
+void start_websocket_server() {
+    zmq::context_t context(1);
+    WebSocketServer wsServer("localhost", 9001, context, "tcp://localhost:12347");
+    wsServer.start();
 }
 
 
@@ -111,14 +118,16 @@ int main(int argc, char* argv[]) {
             startOrderGenerator(config);
         } else if (component == "heal") {
             startHeal();
+        } else if (component == "kline") {
+            start_websocket_server();
         } else {
             std::cerr << "Unknown component: " << component << std::endl;
             return 1;
         }
     } catch (const std::exception& e) {
-        LOG_INFO("Exception: " + std::string(e.what()));
+        LOG_ERROR("Exception: " + std::string(e.what()));
     } catch (...) {
-        LOG_INFO("Unknown exception.");
+        LOG_ERROR("Unknown exception.");
     }
 
     LOG_INFO("Trading System stopped.");

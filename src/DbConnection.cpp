@@ -22,7 +22,7 @@ DbConnection::~DbConnection() {
 }
 
 bool DbConnection::executeQuery(const std::string& query) {
-    LOG_INFO("Executing query: " + query);
+    LOG_DEBUG("Executing query: " + query);
     if (mysql_query(conn, query.c_str())) {
         LOG_DEBUG("Query failed: " + std::string(mysql_error(conn)));
         if (mysql_errno(conn) == CR_SERVER_GONE_ERROR || mysql_errno(conn) == CR_SERVER_LOST) {

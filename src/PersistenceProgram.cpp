@@ -6,6 +6,7 @@ PersistenceProgram::PersistenceProgram(DbConnection& dbConn, zmq::context_t& con
 
     conn = dbConn.getConnection();
     if (conn == nullptr) {
+        LOG_ERROR("Failed to get database connection.");
         throw std::runtime_error("Failed to get database connection");
     }
 
@@ -13,23 +14,23 @@ PersistenceProgram::PersistenceProgram(DbConnection& dbConn, zmq::context_t& con
 }
 
 void PersistenceProgram::start() {
-    LOG_DEBUG("PersistenceProgram starting.");
+    LOG_INFO("PersistenceProgram starting.");
     running = true;
     workerThread = std::thread(&PersistenceProgram::run, this);
-    LOG_DEBUG("PersistenceProgram started.");
+    LOG_INFO("PersistenceProgram started.");
 }
 
 void PersistenceProgram::stop() {
-    LOG_DEBUG("PersistenceProgram stopping.");
+    LOG_INFO("PersistenceProgram stopping.");
     running = false;
     if (workerThread.joinable()) {
         workerThread.join();
     }
-    LOG_DEBUG("PersistenceProgram stopped.");
+    LOG_INFO("PersistenceProgram stopped.");
 }
 
 void PersistenceProgram::run() {
-    LOG_DEBUG("PersistenceProgram running.");
+    LOG_INFO("PersistenceProgram running.");
     while (running) {
         try {
             zmq::message_t resultMessage;
@@ -57,16 +58,8 @@ void PersistenceProgram::run() {
                 continue;
             }
 
-            std::string messageType = message["type"].asString();
-            if (messageType == "TRADE") {
-                LOG_DEBUG("Processing TRADE message.");
-                processTradeMessage(message);
-            } else if (messageType == "UNMATCHED_ORDER") {
-                LOG_DEBUG("Processing UNMATCHED_ORDER message.");
-                processUnmatchedOrderMessage(message);
-            } else {
-                LOG_ERROR("Unknown message type received: " + messageType);
-            }
+            PersistenceProgram::processMessage(message);
+
         } catch (const zmq::error_t& e) {
             LOG_ERROR("ZeroMQ error in PersistenceProgram run loop: " + std::string(e.what()));
             reconnectResultClient();
@@ -75,9 +68,21 @@ void PersistenceProgram::run() {
             reconnectResultClient();
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    LOG_DEBUG("PersistenceProgram stopped.");
+    LOG_INFO("PersistenceProgram stopped.");
+}
+
+void PersistenceProgram::processMessage(const Json::Value& message) {
+    std::string messageType = message["type"].asString();
+    if (messageType == "TRADE") {
+        LOG_DEBUG("Processing TRADE message.");
+        processTradeMessage(message);
+    } else if (messageType == "UNMATCHED_ORDER") {
+        LOG_DEBUG("Processing UNMATCHED_ORDER message.");
+        processUnmatchedOrderMessage(message);
+    } else {
+        LOG_ERROR("Unknown message type received: " + messageType);
+    }
 }
 
 
@@ -112,19 +117,13 @@ void PersistenceProgram::processTradeMessage(const Json::Value& message) {
     Json::Value tradeRecordData = deserializeMessage(message["tradeRecord"].asString());
 
     if (!buyOrderData.isObject() || !sellOrderData.isObject() || !tradeRecordData.isObject()) {
-        LOG_DEBUG("Invalid trade message data: not an object");
+        LOG_ERROR("Invalid trade message data: not an object");
         throw std::runtime_error("Invalid trade message data");
     }
 
     Order buyOrder = deserializeOrder(buyOrderData);
     Order sellOrder = deserializeOrder(sellOrderData);
     TradeRecord trade = deserializeTradeRecord(tradeRecordData);
-
-    // 增加日志以检查每次更新的 filled_quantity
-    LOG_DEBUG("Processing buyOrder. OrderID: " + std::to_string(buyOrder.orderId) +
-             ", FilledQuantity: " + std::to_string(buyOrder.filledQuantity));
-    LOG_DEBUG("Processing sellOrder. OrderID: " + std::to_string(sellOrder.orderId) +
-             ", FilledQuantity: " + std::to_string(sellOrder.filledQuantity));
 
     executeQuery("START TRANSACTION");
     processOrder(buyOrder);

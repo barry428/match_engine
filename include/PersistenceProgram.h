@@ -20,6 +20,7 @@ public:
 private:
     void run();
     void reconnectResultClient();
+    void processMessage(const Json::Value& message);
     void processUnmatchedOrderMessage(const Json::Value& message);
     void processTradeMessage(const Json::Value& message);
     bool executeQuery(const std::string& query);
