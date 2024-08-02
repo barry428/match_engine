@@ -74,14 +74,15 @@ void MatchingEngine::matchOrders(Order& order, std::map<double, std::map<unsigne
     // 记录主动担的所有状态变化
     if (order.filledQuantity == 0) {
         generateUnmatchedOrderMessage(order);
-        LOG_DEBUG("Update Order Status. MATCHING OrderId : " + std::to_string(order.orderId));
+        LOG_DEBUG("matchOrders Update Order Status. MATCHING OrderId : " + std::to_string(order.orderId));
         addOrderToBook(order, ownOrders);
     }else{
         if (order.quantity > order.filledQuantity) {
-            LOG_DEBUG("Update Order Status. PARTIALLY_FILLED OrderId: " + std::to_string(order.orderId) + " filledQuantity: " + std::to_string(order.filledQuantity));
+            LOG_DEBUG("matchOrders Update Order Status. PARTIALLY_FILLED OrderId: " + std::to_string(order.orderId) + " filledQuantity: " + std::to_string(order.filledQuantity));
             addOrderToBook(order, ownOrders);
         }else{
-            LOG_DEBUG("Update Order Status. FULLY_FILLED OrderId : " + std::to_string(order.orderId));
+            LOG_DEBUG("matchOrders Update Order Status. FULLY_FILLED OrderId : " + std::to_string(order.orderId));
+            addOrderToBook(order, ownOrders);
         }
     }
 
@@ -151,6 +152,8 @@ void MatchingEngine::matchSellOrders(Order& order, std::map<double, std::map<uns
                     LOG_DEBUG("Buy order fully filled. BuyOrderID: " + std::to_string(oppositeOrder.orderId));
                     orderIt = ordersAtPrice.erase(orderIt);
                 } else {
+                    // 更新订单状态
+                    addOrderToBook(oppositeOrder, oppositeOrders);
                     ++orderIt;
                 }
             }
@@ -170,6 +173,10 @@ void MatchingEngine::matchSellOrders(Order& order, std::map<double, std::map<uns
 void MatchingEngine::processTrade(Order& order, Order& oppositeOrder, const std::string& orderType) {
     LOG_DEBUG("Match start. OrderId: " + std::to_string(order.orderId) + " OrderPrice: " + std::to_string(order.price)
              + " OppositeOrderId: " + std::to_string(oppositeOrder.orderId) + " OppositeOrderPrice: " + std::to_string(oppositeOrder.price));
+
+    if(oppositeOrder.filledQuantity >= oppositeOrder.quantity){
+        return;
+    }
 
     double tradeQuantity = std::min(order.quantity - order.filledQuantity, oppositeOrder.quantity - oppositeOrder.filledQuantity);
     double tradePrice = oppositeOrder.price;

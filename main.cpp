@@ -9,6 +9,7 @@
 #include "HealthCheckServer.h"
 #include "DbConfig.h"
 #include "DbConnection.h"
+#include "DbConnectionPool.h"
 #include "Logger.h"
 #include "WebSocketServer.h"
 
@@ -46,18 +47,38 @@ void startMessageQueueServersAndMatchingEngine() {
 }
 
 void startPersistenceProgram(const DbConfig& config) {
-    DbConnection dbConn(config);
-
     // 创建 ZeroMQ 上下文
     zmq::context_t context(1);
+    std::vector<std::thread> threads;
 
-    // 启动持久化程序
-    PersistenceProgram persistenceProgram(dbConn, context, "tcp://localhost:12346");
-    persistenceProgram.start();
+    // 创建数据库连接池，假设连接池大小为 8
+    DbConnectionPool connectionPool(config, 8);
 
-    // 持续运行持久化程序
-    while (persistenceProgram.isRunning()) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+    // 启动多个线程来处理消息
+    for (int i = 0; i < 1; ++i) { // 使用 8 个线程处理
+        threads.emplace_back([&]() {
+            try {
+                // 创建持久化程序实例，直接使用连接池
+                PersistenceProgram persistenceProgram(connectionPool, context, "tcp://localhost:12346");
+                persistenceProgram.start();
+
+                // 持续运行持久化程序
+                while (persistenceProgram.isRunning()) {
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            } catch (const std::exception& e) {
+                LOG_ERROR("Exception in persistence thread: " + std::string(e.what()));
+            } catch (...) {
+                LOG_ERROR("Unknown exception in persistence thread.");
+            }
+        });
+    }
+
+    // 等待所有线程完成
+    for (auto& thread : threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
     }
 }
 
@@ -103,7 +124,7 @@ int main(int argc, char* argv[]) {
     std::cout.rdbuf(logFile.rdbuf());
     std::cerr.rdbuf(logFile.rdbuf());
 
-    Logger::getInstance().init("server.log", LogLevel::INFO);
+    Logger::getInstance().init("server.log", LogLevel::DEBUG);
 
     LOG_INFO("Starting " + component);
     try {

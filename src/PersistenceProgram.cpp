@@ -1,16 +1,27 @@
 #include "PersistenceProgram.h"
 #include <iostream>
 
-PersistenceProgram::PersistenceProgram(DbConnection& dbConn, zmq::context_t& context, const std::string& resultServerAddress)
-        : dbConn(dbConn), context(context), resultServerAddress(resultServerAddress), resultSocket(context, zmq::socket_type::pull), running(false) {
+PersistenceProgram::PersistenceProgram(DbConnectionPool& connectionPool, zmq::context_t& context, const std::string& resultServerAddress)
+        : dbConnPool(connectionPool), context(context), resultServerAddress(resultServerAddress), resultSocket(context, zmq::socket_type::pull), running(false) {
 
-    conn = dbConn.getConnection();
-    if (conn == nullptr) {
-        LOG_ERROR("Failed to get database connection.");
-        throw std::runtime_error("Failed to get database connection");
+    try {
+        dbConn = dbConnPool.getConnection(); // 获取连接
+        if (dbConn == nullptr || dbConn->getConnection() == nullptr) {
+            LOG_ERROR("Failed to get database connection.");
+            throw std::runtime_error("Failed to get database connection");
+        }
+
+        resultSocket.connect(resultServerAddress);
+    } catch (const std::exception& e) {
+        LOG_ERROR("Exception while initializing PersistenceProgram: " + std::string(e.what()));
+        throw; // Re-throw the exception after logging
     }
+}
 
-    resultSocket.connect(resultServerAddress);
+PersistenceProgram::~PersistenceProgram() {
+    if (dbConn) {
+        dbConnPool.returnConnection(dbConn); // 归还连接
+    }
 }
 
 void PersistenceProgram::start() {
@@ -134,7 +145,7 @@ void PersistenceProgram::processTradeMessage(const Json::Value& message) {
 
 bool PersistenceProgram::executeQuery(const std::string& query) {
     std::lock_guard<std::mutex> lock(connMutex);
-    return dbConn.executeQuery(query);
+    return dbConn->executeQuery(query);
 }
 
 void PersistenceProgram::processOrder(const Order& order) {

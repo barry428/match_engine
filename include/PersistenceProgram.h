@@ -4,6 +4,7 @@
 #include "Serialization.h"
 #include "TradeRecord.h"
 #include "DbConnection.h"
+#include "DbConnectionPool.h"
 #include "Logger.h"
 #include <thread>
 #include <boost/asio.hpp>
@@ -12,7 +13,8 @@
 
 class PersistenceProgram {
 public:
-    PersistenceProgram(DbConnection& dbConn, zmq::context_t& context, const std::string& resultServerAddress);
+    PersistenceProgram(DbConnectionPool& connectionPool, zmq::context_t& context, const std::string& resultServerAddress);
+    ~PersistenceProgram(); // Destructor to release connection
     void start();
     void stop();
     bool isRunning() const { return running; }
@@ -27,7 +29,8 @@ private:
     void processOrder(const Order& order);
     void processTradeRecord(const TradeRecord& trade);
 
-    DbConnection& dbConn;
+    DbConnectionPool& dbConnPool;
+    DbConnection* dbConn; // Pointer to DbConnection
     zmq::context_t& context;
     std::string resultServerAddress;
     zmq::socket_t resultSocket;

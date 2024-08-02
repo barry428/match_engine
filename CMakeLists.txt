@@ -48,7 +48,7 @@ include_directories(${ZeroMQ_INCLUDE_DIR})
 include_directories(third_party/websocketpp)
 
 # 查找 OpenSSL 库
-set(OPENSSL_ROOT_DIR /opt/homebrew/opt/openssl@3)
+set(OPENSSL_ROOT_DIR /opt/homebrew/opt/openssl)
 find_package(OpenSSL REQUIRED)
 if (OPENSSL_FOUND)
     include_directories(${OPENSSL_INCLUDE_DIR})
@@ -62,7 +62,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 
 # 添加可执行文件
-add_executable(TradingSystem main.cpp src/Serialization.cpp src/OrderGenerator.cpp src/MatchingEngine.cpp src/PersistenceProgram.cpp src/HealthCheckServer.cpp src/DbConfig.cpp src/DbConnection.cpp src/Order.cpp include/Logger.h src/WebSocketServer.cpp include/WebSocketServer.h)
+add_executable(TradingSystem main.cpp src/Serialization.cpp src/OrderGenerator.cpp src/MatchingEngine.cpp src/PersistenceProgram.cpp src/HealthCheckServer.cpp src/DbConfig.cpp src/DbConnection.cpp src/Order.cpp include/Logger.h src/WebSocketServer.cpp src/DbConnectionPool.cpp)
 
 # 链接 Boost、MySQL 和 jsoncpp 库
 target_link_libraries(TradingSystem mysqlclient jsoncpp ${ZeroMQ_LIBRARY} OpenSSL::SSL OpenSSL::Crypto)
