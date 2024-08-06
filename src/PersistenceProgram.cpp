@@ -1,6 +1,8 @@
 #include "PersistenceProgram.h"
 #include <iostream>
 
+double total_persis = 0;
+
 PersistenceProgram::PersistenceProgram(DbConnectionPool& connectionPool, zmq::context_t& context, const std::string& resultServerAddress)
         : dbConnPool(connectionPool), context(context), resultServerAddress(resultServerAddress), resultSocket(context, zmq::socket_type::pull), running(false) {
 
@@ -52,7 +54,7 @@ void PersistenceProgram::run() {
             }
 
             std::string resultData(static_cast<char*>(resultMessage.data()), resultMessage.size());
-            LOG_INFO("Received message from resultSocket: " + resultData);
+            LOG_DEBUG("Received message from resultSocket: " + resultData);
 
             if (resultData.empty()) {
                 LOG_ERROR("Received empty message.");

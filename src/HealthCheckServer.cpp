@@ -57,6 +57,7 @@ void HealthCheckServer::receiveOrderBook() {
             auto result = bookSocket.recv(message, zmq::recv_flags::none);
             if (result) {
                 std::string orderBookData(static_cast<char*>(message.data()), message.size());
+                LOG_DEBUG("Received order book data");
                 LOG_DEBUG("Received order book data: " + orderBookData);
 
                 std::lock_guard<std::mutex> lock(orderBookMutex_);
@@ -67,7 +68,6 @@ void HealthCheckServer::receiveOrderBook() {
         } catch (const std::exception& e) {
             LOG_ERROR("Error in receiveOrderBook: " + std::string(e.what()));
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     LOG_DEBUG("OrderBook receiver stopped.");
 }

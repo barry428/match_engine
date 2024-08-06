@@ -5,7 +5,9 @@
 #include <zmq.hpp>
 
 MatchingEngine::MatchingEngine(zmq::socket_t& orderSocket, zmq::socket_t& resultSocket, zmq::socket_t& bookSocket)
-        : orderSocket(orderSocket), resultSocket(resultSocket), bookSocket(bookSocket), running(false) {}
+        : orderSocket(orderSocket), resultSocket(resultSocket), bookSocket(bookSocket), running(false) {
+    // orderSocket.set(zmq::sockopt::subscribe, ""); // 订阅所有消息
+}
 
 void MatchingEngine::start() {
     LOG_INFO("MatchingEngine starting.");
@@ -26,11 +28,12 @@ void MatchingEngine::run() {
             auto result = orderSocket.recv(orderMessage, zmq::recv_flags::none);
             if (result.has_value()) {
                 std::string orderData(static_cast<char*>(orderMessage.data()), orderMessage.size());
-                LOG_INFO("Order received: " + orderData);
+                LOG_DEBUG("Order received: " + orderData);
                 if (!orderData.empty()) {
                     Json::Value message = deserializeMessage(orderData);
                     Json::Value nestedOrderMessage = deserializeMessage(message["order"].asString());
                     Order order = deserializeOrder(nestedOrderMessage);
+                    double filled = order.filledQuantity;
                     processOrder(order);
                 }
             } else {
@@ -82,7 +85,6 @@ void MatchingEngine::matchOrders(Order& order, std::map<double, std::map<unsigne
             addOrderToBook(order, ownOrders);
         }else{
             LOG_DEBUG("matchOrders Update Order Status. FULLY_FILLED OrderId : " + std::to_string(order.orderId));
-            addOrderToBook(order, ownOrders);
         }
     }
 
@@ -95,7 +97,7 @@ void MatchingEngine::publishOrderBook() {
     std::string orderBookData = formatOrderBook();
     zmq::message_t message(orderBookData.c_str(), orderBookData.size());
     bookSocket.send(message, zmq::send_flags::none);
-    LOG_DEBUG("Published order book data: " + orderBookData);
+    LOG_DEBUG("Published order book");
 }
 
 void MatchingEngine::matchBuyOrders(Order& order, std::map<double, std::map<unsigned int, Order>>& oppositeOrders,
@@ -110,13 +112,14 @@ void MatchingEngine::matchBuyOrders(Order& order, std::map<double, std::map<unsi
             for (auto orderIt = ordersAtPrice.begin(); orderIt != ordersAtPrice.end() && order.quantity > order.filledQuantity; ) {
                 Order& oppositeOrder = orderIt->second;
                 LOG_DEBUG("Processing trade. BuyOrderID: " + std::to_string(order.orderId) + ", SellOrderID: " + std::to_string(oppositeOrder.orderId));
-                processTrade(order, oppositeOrder, "BUY");
+                processTrade(order, oppositeOrder);
 
                 if (oppositeOrder.filledQuantity >= oppositeOrder.quantity) {
-                    LOG_DEBUG("Sell order fully filled. SellOrderID: " + std::to_string(oppositeOrder.orderId));
+                    LOG_DEBUG("matchOrders Update Order Status. FULLY_FILLED OrderId : " + std::to_string(oppositeOrder.orderId));
                     orderIt = ordersAtPrice.erase(orderIt);
                 } else {
                     // 更新订单状态
+                    LOG_DEBUG("matchOrders Update Order Status. PARTIALLY_FILLED OrderId: " + std::to_string(oppositeOrder.orderId) + " filledQuantity: " + std::to_string(oppositeOrder.filledQuantity));
                     addOrderToBook(oppositeOrder, oppositeOrders);
                     ++orderIt;
                 }
@@ -146,13 +149,14 @@ void MatchingEngine::matchSellOrders(Order& order, std::map<double, std::map<uns
             for (auto orderIt = ordersAtPrice.begin(); orderIt != ordersAtPrice.end() && order.quantity > order.filledQuantity; ) {
                 Order& oppositeOrder = orderIt->second;
                 LOG_DEBUG("Processing trade. SellOrderID: " + std::to_string(order.orderId) + ", BuyOrderID: " + std::to_string(oppositeOrder.orderId));
-                processTrade(order, oppositeOrder, "SELL");
+                processTrade(order, oppositeOrder);
 
                 if (oppositeOrder.filledQuantity >= oppositeOrder.quantity) {
-                    LOG_DEBUG("Buy order fully filled. BuyOrderID: " + std::to_string(oppositeOrder.orderId));
+                    LOG_DEBUG("matchOrders Update Order Status. FULLY_FILLED OrderId : " + std::to_string(oppositeOrder.orderId));
                     orderIt = ordersAtPrice.erase(orderIt);
                 } else {
                     // 更新订单状态
+                    LOG_DEBUG("matchOrders Update Order Status. PARTIALLY_FILLED OrderId: " + std::to_string(oppositeOrder.orderId) + " filledQuantity: " + std::to_string(oppositeOrder.filledQuantity));
                     addOrderToBook(oppositeOrder, oppositeOrders);
                     ++orderIt;
                 }
@@ -170,29 +174,14 @@ void MatchingEngine::matchSellOrders(Order& order, std::map<double, std::map<uns
     }
 }
 
-void MatchingEngine::processTrade(Order& order, Order& oppositeOrder, const std::string& orderType) {
-    LOG_DEBUG("Match start. OrderId: " + std::to_string(order.orderId) + " OrderPrice: " + std::to_string(order.price)
-             + " OppositeOrderId: " + std::to_string(oppositeOrder.orderId) + " OppositeOrderPrice: " + std::to_string(oppositeOrder.price));
-
-    if(oppositeOrder.filledQuantity >= oppositeOrder.quantity){
-        return;
-    }
+void MatchingEngine::processTrade(Order& order, Order& oppositeOrder) {
 
     double tradeQuantity = std::min(order.quantity - order.filledQuantity, oppositeOrder.quantity - oppositeOrder.filledQuantity);
     double tradePrice = oppositeOrder.price;
 
-    TradeRecord trade = createTradeRecord(order, oppositeOrder, tradeQuantity, tradePrice, orderType);
-
-    double prevFilledQuantityOppositeOrder = oppositeOrder.filledQuantity;
-
     order.filledQuantity += tradeQuantity;
     oppositeOrder.filledQuantity += tradeQuantity;
-
-    if (oppositeOrder.quantity > oppositeOrder.filledQuantity) {
-        LOG_DEBUG("Update Order Status. PARTIALLY_FILLED OrderId: " + std::to_string(oppositeOrder.orderId) + " prevFilledQuantityOrder: " + std::to_string(prevFilledQuantityOppositeOrder) + " filledQuantity: " + std::to_string(oppositeOrder.filledQuantity));
-    }else{
-        LOG_DEBUG("Update Order Status. FULLY_FILLED OrderId : " + std::to_string(oppositeOrder.orderId) + " prevFilledQuantityOrder: " + std::to_string(prevFilledQuantityOppositeOrder) + " filledQuantity: " + std::to_string(oppositeOrder.filledQuantity));
-    }
+    TradeRecord trade = createTradeRecord(order, oppositeOrder, tradeQuantity, tradePrice, orderSideToString(order.orderSide));
 
     generateTradeMessage(order, oppositeOrder, trade);
 
@@ -254,7 +243,7 @@ std::string MatchingEngine::formatOrderBook() {
     for (const auto& [price, ordersAtPrice] : buyOrders) {
         for (const auto& [orderId, order] : ordersAtPrice) {
             oss << std::left << std::setw(12) << "BUY" << " | "
-                << std::setw(8) << std::fixed << std::setprecision(2) << price << " | "
+                << std::setw(8) << std::fixed << std::setprecision(8) << price << " | "
                 << std::setw(8) << order.quantity << "\n";
         }
     }
@@ -263,7 +252,7 @@ std::string MatchingEngine::formatOrderBook() {
     for (const auto& [price, ordersAtPrice] : sellOrders) {
         for (const auto& [orderId, order] : ordersAtPrice) {
             oss << std::left << std::setw(12) << "SELL" << " | "
-                << std::setw(8) << std::fixed << std::setprecision(2) << price << " | "
+                << std::setw(8) << std::fixed << std::setprecision(8) << price << " | "
                 << std::setw(8) << order.quantity << "\n";
         }
     }

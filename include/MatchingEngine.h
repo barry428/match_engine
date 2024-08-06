@@ -25,7 +25,7 @@ private:
                         std::map<double, std::map<unsigned int, Order>>& ownOrders);
     void matchSellOrders(Order& order, std::map<double, std::map<unsigned int, Order>>& oppositeOrders,
                          std::map<double, std::map<unsigned int, Order>>& ownOrders);
-    void processTrade(Order& order, Order& oppositeOrder, const std::string& orderType);
+    void processTrade(Order& order, Order& oppositeOrder);
     void generateUnmatchedOrderMessage(const Order& order);
     void generateTradeMessage(const Order& buyOrder, const Order& sellOrder, const TradeRecord& trade);
     TradeRecord createTradeRecord(const Order& buyOrder, const Order& sellOrder, double tradeQuantity, double tradePrice, const std::string& orderType);

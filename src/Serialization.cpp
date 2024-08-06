@@ -2,7 +2,6 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
-#include <cmath>
 
 std::string time_point_to_string(const std::chrono::time_point<std::chrono::system_clock>& tp) {
     std::time_t time = std::chrono::system_clock::to_time_t(tp);
@@ -72,181 +71,47 @@ std::string serializeOrder(const Order& order) {
     Json::Value root;
     root["orderId"] = order.orderId;
     root["userId"] = order.userId;
-    root["price"] = order.price;
-    root["quantity"] = order.quantity;
-    root["feeRate"] = order.feeRate;
+    root["price"] = std::to_string(order.price);
+    root["quantity"] = std::to_string(order.quantity);
+    root["feeRate"] = std::to_string(order.feeRate);
     root["orderSide"] = orderSideToString(order.orderSide);
     root["orderType"] = orderTypeToString(order.orderType);
     root["status"] = orderStatusToString(order.status);
     root["createTime"] = time_point_to_string(order.createTime);
     root["updateTime"] = time_point_to_string(order.updateTime);
-    root["filledQuantity"] = order.filledQuantity;
+    root["filledQuantity"] = std::to_string(order.filledQuantity);
     Json::StreamWriterBuilder writer;
     writer["indentation"] = ""; // 去掉换行符和缩进
+    LOG_DEBUG("serialize orders. orderId:" + std::to_string(order.orderId) + " price:" + std::to_string(order.price));
+    LOG_DEBUG("serialize orders. json:" + Json::writeString(writer, root));
     return Json::writeString(writer, root);
 }
 
+// 反序列化 Order 对象
 Order deserializeOrder(const Json::Value& root) {
     Order order;
+    if (!root.isObject()) {
+        throw std::runtime_error("deserializeOrder: JSON root is not an object");
+    }
+
     try {
-        if (!root.isObject()) {
-            LOG_DEBUG("deserializeOrder: JSON root is not an object");
-            throw std::runtime_error("JSON root is not an object");
-        }
-
-        if (!root.isMember("orderId")) {
-            LOG_DEBUG("deserializeOrder: Missing 'orderId'");
-            throw std::runtime_error("Missing 'orderId'");
-        }
         order.orderId = root["orderId"].asUInt();
-
-        if (!root.isMember("userId")) {
-            LOG_DEBUG("deserializeOrder: Missing 'userId'");
-            throw std::runtime_error("Missing 'userId'");
-        }
         order.userId = root["userId"].asUInt64();
-
-        if (!root.isMember("price")) {
-            LOG_DEBUG("deserializeOrder: Missing 'price'");
-            throw std::runtime_error("Missing 'price'");
-        }
-        order.price = roundToPrecision(root["price"].asDouble(), 8);
-
-        if (!root.isMember("quantity")) {
-            LOG_DEBUG("deserializeOrder: Missing 'quantity'");
-            throw std::runtime_error("Missing 'quantity'");
-        }
-        order.quantity = roundToPrecision(root["quantity"].asDouble(), 6);
-
-        if (!root.isMember("feeRate")) {
-            LOG_DEBUG("deserializeOrder: Missing 'feeRate'");
-            throw std::runtime_error("Missing 'feeRate'");
-        }
-        order.feeRate = roundToPrecision(root["feeRate"].asDouble(), 6);
-
-        if (!root.isMember("orderSide")) {
-            LOG_DEBUG("deserializeOrder: Missing 'orderSide'");
-            throw std::runtime_error("Missing 'orderSide'");
-        }
+        order.price = convertStringToDouble(root, "price");
+        order.quantity = convertStringToDouble(root, "quantity");
+        order.feeRate = convertStringToDouble(root, "feeRate");
         order.orderSide = stringToOrderSide(root["orderSide"].asString());
-
-        if (!root.isMember("orderType")) {
-            LOG_DEBUG("deserializeOrder: Missing 'orderType'");
-            throw std::runtime_error("Missing 'orderType'");
-        }
         order.orderType = stringToOrderType(root["orderType"].asString());
-
-        if (!root.isMember("status")) {
-            LOG_DEBUG("deserializeOrder: Missing 'status'");
-            throw std::runtime_error("Missing 'status'");
-        }
         order.status = stringToOrderStatus(root["status"].asString());
-
-        if (!root.isMember("createTime")) {
-            LOG_DEBUG("deserializeOrder: Missing 'createTime'");
-            throw std::runtime_error("Missing 'createTime'");
-        }
         order.createTime = string_to_time_point(root["createTime"].asString());
-
-        if (!root.isMember("updateTime")) {
-            LOG_DEBUG("deserializeOrder: Missing 'updateTime'");
-            throw std::runtime_error("Missing 'updateTime'");
-        }
         order.updateTime = string_to_time_point(root["updateTime"].asString());
-
-        if (!root.isMember("filledQuantity")) {
-            LOG_DEBUG("deserializeOrder: Missing 'filledQuantity'");
-            throw std::runtime_error("Missing 'filledQuantity'");
-        }
-        order.filledQuantity = roundToPrecision(root["filledQuantity"].asDouble(), 6);
-
+        order.filledQuantity = convertStringToDouble(root, "filledQuantity");
     } catch (const std::exception& e) {
-        LOG_DEBUG("Error deserializing Order: " + std::string(e.what()));
-        throw;
+        throw std::runtime_error("Error deserializing Order: " + std::string(e.what()));
     }
     return order;
 }
 
-TradeRecord deserializeTradeRecord(const Json::Value& root) {
-    TradeRecord trade;
-    try {
-        if (!root.isObject()) {
-            LOG_DEBUG("deserializeTradeRecord: JSON root is not an object");
-            throw std::runtime_error("JSON root is not an object");
-        }
-
-        if (!root.isMember("tradeId")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'tradeId'");
-            throw std::runtime_error("Missing 'tradeId'");
-        }
-        trade.tradeId = root["tradeId"].asUInt();
-
-        if (!root.isMember("buyerUserId")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'buyerUserId'");
-            throw std::runtime_error("Missing 'buyerUserId'");
-        }
-        trade.buyerUserId = root["buyerUserId"].asUInt64();
-
-        if (!root.isMember("sellerUserId")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'sellerUserId'");
-            throw std::runtime_error("Missing 'sellerUserId'");
-        }
-        trade.sellerUserId = root["sellerUserId"].asUInt64();
-
-        if (!root.isMember("buyerOrderId")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'buyerOrderId'");
-            throw std::runtime_error("Missing 'buyerOrderId'");
-        }
-        trade.buyerOrderId = root["buyerOrderId"].asUInt();
-
-        if (!root.isMember("sellerOrderId")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'sellerOrderId'");
-            throw std::runtime_error("Missing 'sellerOrderId'");
-        }
-        trade.sellerOrderId = root["sellerOrderId"].asUInt();
-
-        if (!root.isMember("orderType")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'orderType'");
-            throw std::runtime_error("Missing 'orderType'");
-        }
-        trade.orderType = root["orderType"].asString();
-
-        if (!root.isMember("tradePrice")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'tradePrice'");
-            throw std::runtime_error("Missing 'tradePrice'");
-        }
-        trade.tradePrice = roundToPrecision(root["tradePrice"].asDouble(), 8);
-
-        if (!root.isMember("tradeQuantity")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'tradeQuantity'");
-            throw std::runtime_error("Missing 'tradeQuantity'");
-        }
-        trade.tradeQuantity = roundToPrecision(root["tradeQuantity"].asDouble(), 6);
-
-        if (!root.isMember("buyerFee")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'buyerFee'");
-            throw std::runtime_error("Missing 'buyerFee'");
-        }
-        trade.buyerFee = roundToPrecision(root["buyerFee"].asDouble(), 6);
-
-        if (!root.isMember("sellerFee")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'sellerFee'");
-            throw std::runtime_error("Missing 'sellerFee'");
-        }
-        trade.buyerFee = roundToPrecision(root["sellerFee"].asDouble(), 6);
-
-        if (!root.isMember("tradeTime")) {
-            LOG_DEBUG("deserializeTradeRecord: Missing 'tradeTime'");
-            throw std::runtime_error("Missing 'tradeTime'");
-        }
-        trade.tradeTime = string_to_time_point(root["tradeTime"].asString());
-
-    } catch (const std::exception& e) {
-        LOG_DEBUG("Error deserializing TradeRecord: " + std::string(e.what()));
-        throw;
-    }
-    return trade;
-}
 
 std::string serializeTradeRecord(const TradeRecord& trade) {
     Json::Value root;
@@ -256,14 +121,39 @@ std::string serializeTradeRecord(const TradeRecord& trade) {
     root["buyerOrderId"] = trade.buyerOrderId;
     root["sellerOrderId"] = trade.sellerOrderId;
     root["orderType"] = trade.orderType;
-    root["tradePrice"] = trade.tradePrice;
-    root["tradeQuantity"] = trade.tradeQuantity;
-    root["buyerFee"] = trade.buyerFee;
-    root["sellerFee"] = trade.sellerFee;
+    root["tradePrice"] = std::to_string(trade.tradePrice);
+    root["tradeQuantity"] = std::to_string(trade.tradeQuantity);
+    root["buyerFee"] = std::to_string(trade.buyerFee);
+    root["sellerFee"] = std::to_string(trade.sellerFee);
     root["tradeTime"] = time_point_to_string(trade.tradeTime);
     Json::StreamWriterBuilder writer;
     writer["indentation"] = ""; // 去掉换行符和缩进
     return Json::writeString(writer, root);
+}
+
+// 反序列化 TradeRecord 对象
+TradeRecord deserializeTradeRecord(const Json::Value& root) {
+    TradeRecord trade;
+    if (!root.isObject()) {
+        throw std::runtime_error("deserializeTradeRecord: JSON root is not an object");
+    }
+
+    try {
+        trade.tradeId = root["tradeId"].asUInt();
+        trade.buyerUserId = root["buyerUserId"].asUInt64();
+        trade.sellerUserId = root["sellerUserId"].asUInt64();
+        trade.buyerOrderId = root["buyerOrderId"].asUInt();
+        trade.sellerOrderId = root["sellerOrderId"].asUInt();
+        trade.orderType = root["orderType"].asString();
+        trade.tradePrice = convertStringToDouble(root, "tradePrice");
+        trade.tradeQuantity = convertStringToDouble(root, "tradeQuantity");
+        trade.buyerFee = convertStringToDouble(root, "buyerFee");
+        trade.sellerFee = convertStringToDouble(root, "sellerFee");
+        trade.tradeTime = string_to_time_point(root["tradeTime"].asString());
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Error deserializing TradeRecord: " + std::string(e.what()));
+    }
+    return trade;
 }
 
 std::string serializeMessage(const Json::Value& message) {
@@ -286,7 +176,16 @@ Json::Value deserializeMessage(const std::string& data) {
     return root;
 }
 
-double roundToPrecision(double value, int precision) {
-    double factor = std::pow(10.0, precision);
-    return std::round(value * factor) / factor;
+// 转换字符串到 double 的辅助函数
+double convertStringToDouble(const Json::Value& value, const std::string& key) {
+    if (!value.isMember(key) || !value[key].isString()) {
+        throw std::invalid_argument("Key is missing or not a string in JSON object: " + key);
+    }
+
+    const std::string& strValue = value[key].asString();
+    try {
+        return std::stod(strValue);
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Conversion error for key " + key + ": " + std::string(e.what()));
+    }
 }

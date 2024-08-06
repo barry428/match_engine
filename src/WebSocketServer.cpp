@@ -1,4 +1,5 @@
 #include "WebSocketServer.h"
+#include "Logger.h"
 #include <iostream>
 
 WebSocketServer::WebSocketServer(const std::string& host, int port, zmq::context_t& context, const std::string& bookServerAddress)
@@ -44,6 +45,7 @@ void WebSocketServer::receive_order_book() {
                 std::string orderBookData(static_cast<char*>(message.data()), message.size());
                 std::lock_guard<std::mutex> lock(orderBookMutex_);
                 latestOrderBook_ = orderBookData;
+                LOG_DEBUG("Received order book data");
                 send_to_all(orderBookData);
             }
         } catch (const zmq::error_t& e) {
@@ -51,7 +53,6 @@ void WebSocketServer::receive_order_book() {
         } catch (const std::exception& e) {
             std::cerr << "Error in receive_order_book: " << e.what() << std::endl;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 

@@ -33,4 +33,4 @@ TradeRecord deserializeTradeRecord(const Json::Value& root);
 std::string serializeMessage(const Json::Value& message);
 Json::Value deserializeMessage(const std::string& data);
 
-double roundToPrecision(double value, int precision);
+double convertStringToDouble(const Json::Value& value, const std::string& key);

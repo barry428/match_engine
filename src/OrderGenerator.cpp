@@ -17,13 +17,14 @@ OrderGenerator::OrderGenerator(DbConnection& dbConn, zmq::context_t& context, co
 
 void OrderGenerator::generateOrders(int numOrders) {
     loadOrdersFromDatabase();
+
     orderIdCounter = getMaxOrderId();
     for (int i = 0; i < numOrders; ++i) {
         Order order = createRandomOrder();
         sendOrder(order, false);
 
         // 模拟订单生成的延迟
-        // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
 
@@ -41,6 +42,7 @@ Order OrderGenerator::createRandomOrder() {
     order.createTime = std::chrono::system_clock::now();
     order.updateTime = order.createTime;
     order.filledQuantity = 0.0;
+    LOG_DEBUG("create random orders from database. orderId:" + std::to_string(order.orderId) + " price:" + std::to_string(order.price));
     return order;
 }
 
@@ -79,7 +81,7 @@ void OrderGenerator::writeOrderToDatabase(const Order& order) {
 }
 
 void OrderGenerator::loadOrdersFromDatabase() {
-    std::string query = "SELECT order_id, user_id, price, quantity, fee_rate, order_side, order_type, status, filled_quantity, create_time, update_time FROM orders WHERE status IN ('INITIAL', 'MATCHING', 'PARTIALLY_FILLED')";
+    std::string query = "SELECT order_id, user_id, price, quantity, fee_rate, order_side, order_type, status, filled_quantity, create_time, update_time FROM orders WHERE status IN ('INITIAL', 'MATCHING', 'PARTIALLY_FILLED') ORDER BY create_time ASC";
 
     try {
         std::vector<std::map<std::string, std::string>> results = dbConn.executeQueryWithResult(query);
@@ -89,22 +91,25 @@ void OrderGenerator::loadOrdersFromDatabase() {
             return;
         }
 
+        double total = 0;
         for (const auto& row : results) {
             Order order;
             order.orderId = std::stoul(row.at("order_id"));
             order.userId = std::stoul(row.at("user_id"));
-            order.price = roundToPrecision(std::stod(row.at("price")), 8);
-            order.quantity = roundToPrecision(std::stod(row.at("quantity")),6);
-            order.feeRate = roundToPrecision(std::stod(row.at("fee_rate")), 6);
+            order.price = std::stod(row.at("price"));
+            order.quantity = std::stod(row.at("quantity"));
+            order.feeRate = std::stod(row.at("fee_rate"));
             order.orderSide = stringToOrderSide(row.at("order_side"));
             order.orderType = stringToOrderType(row.at("order_type"));
             order.status = stringToOrderStatus(row.at("status"));
-            order.filledQuantity = roundToPrecision(std::stod(row.at("filled_quantity")), 6);
+            order.filledQuantity = std::stod(row.at("filled_quantity"));
             order.createTime = string_to_time_point(row.at("create_time"));
             order.updateTime = string_to_time_point(row.at("update_time"));
-            LOG_DEBUG("loading orders from database: " + row.at("order_id"));
+            LOG_DEBUG("loading orders from database. orderId:" + std::to_string(order.orderId) + " price:" + std::to_string(order.price) + " price:" + row.at("price"));
             sendOrder(order, true);
+            total += order.quantity - order.filledQuantity;
         }
+        LOG_DEBUG("loading orders from database. total:" + std::to_string(total));
     } catch (const std::exception& e) {
         LOG_DEBUG("Error loading orders from database: " + std::string(e.what()));
         // 这里可以根据需要进行进一步的错误处理

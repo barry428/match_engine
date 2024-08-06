@@ -38,7 +38,7 @@ void startMessageQueueServersAndMatchingEngine() {
         try {
             matchingEngine.start();
         } catch (const std::exception& e) {
-            LOG_INFO("Error in MatchingEngine: " + std::string(e.what()));
+            LOG_WARN("Error in MatchingEngine: " + std::string(e.what()));
         }
     });
 
@@ -119,12 +119,12 @@ int main(int argc, char* argv[]) {
     std::string component = argv[1];
 
     // 重定向 std::cout 和 std::cerr 到日志文件
-    std::streambuf* coutBuf = std::cout.rdbuf();
-    std::streambuf* cerrBuf = std::cerr.rdbuf();
-    std::cout.rdbuf(logFile.rdbuf());
-    std::cerr.rdbuf(logFile.rdbuf());
+//    std::streambuf *coutBuf = std::cout.rdbuf();
+//    std::streambuf *cerrBuf = std::cerr.rdbuf();
+//    std::cout.rdbuf(logFile.rdbuf());
+//    std::cerr.rdbuf(logFile.rdbuf());
 
-    Logger::getInstance().init("server.log", LogLevel::DEBUG);
+    Logger::getInstance().init("server.log", LogLevel::INFO);
 
     LOG_INFO("Starting " + component);
     try {
@@ -154,8 +154,8 @@ int main(int argc, char* argv[]) {
     LOG_INFO("Trading System stopped.");
 
     // 恢复 std::cout 和 std::cerr 的缓冲区
-    std::cout.rdbuf(coutBuf);
-    std::cerr.rdbuf(cerrBuf);
+//    std::cout.rdbuf(coutBuf);
+//    std::cerr.rdbuf(cerrBuf);
 
     logFile.close();
     return 0;
