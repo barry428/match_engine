@@ -59,7 +59,7 @@ void MatchingEngine::processOrder(Order& order) {
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    LOG_ERROR("processOrder executed in " + std::to_string(duration) + " μs.");
+    LOG_INFO("processOrder executed in " + std::to_string(duration) + " μs.");
 }
 
 void MatchingEngine::addOrderToBook(Order& order, std::map<double, std::map<unsigned int, Order>>& orderBook) {
