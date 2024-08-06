@@ -4,12 +4,12 @@
 DbConnection::DbConnection(const DbConfig& config) {
     conn = mysql_init(nullptr);
     if (conn == nullptr) {
-        std::cerr << "mysql_init() failed\n";
+        LOG_WARN("mysql_init() failed.");
         return;
     }
 
     if (mysql_real_connect(conn, config.host.c_str(), config.user.c_str(), config.password.c_str(), config.database.c_str(), 0, nullptr, 0) == nullptr) {
-        std::cerr << "mysql_real_connect() failed\n";
+        LOG_WARN("mysql_real_connect() failed.");
         mysql_close(conn);
         conn = nullptr;
     }
@@ -28,7 +28,7 @@ bool DbConnection::executeQuery(const std::string& query) {
         if (mysql_errno(conn) == CR_SERVER_GONE_ERROR || mysql_errno(conn) == CR_SERVER_LOST) {
             reconnect();
             if (mysql_query(conn, query.c_str())) {
-                LOG_ERROR("Query failed after reconnect: " + std::string(mysql_error(conn)));
+                LOG_WARN("Query failed after reconnect: " + std::string(mysql_error(conn)));
                 return false;
             }
         } else {
@@ -56,7 +56,7 @@ std::vector<std::map<std::string, std::string>> DbConnection::executeQueryWithRe
 
     MYSQL_RES* res = mysql_store_result(conn);
     if (res == nullptr) {
-        LOG_DEBUG("mysql_store_result() failed: " + std::string(mysql_error(conn)));
+        LOG_WARN("mysql_store_result() failed: " + std::string(mysql_error(conn)));
         return results;
     }
 
@@ -82,6 +82,7 @@ void DbConnection::reconnect() {
     mysql_close(conn);
     conn = getConnection();
     if (conn == nullptr) {
+        LOG_ERROR("Failed to reconnect to database.");
         throw std::runtime_error("Failed to reconnect to database");
     }
     LOG_DEBUG("Reconnected to database successfully");

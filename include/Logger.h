@@ -62,8 +62,6 @@ public:
         std::ostringstream logMessage;
         logMessage << "[" << timestamp.str() << "] [" << getLevelString(level) << "] [" << fileName << ":" << line << "] " << message;
 
-        //std::cout << logMessage.str() << std::endl;
-
         if (logFile.is_open()) {
             logFile << logMessage.str() << std::endl;
         }

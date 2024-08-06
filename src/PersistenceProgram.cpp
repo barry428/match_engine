@@ -1,8 +1,6 @@
 #include "PersistenceProgram.h"
 #include <iostream>
 
-double total_persis = 0;
-
 PersistenceProgram::PersistenceProgram(DbConnectionPool& connectionPool, zmq::context_t& context, const std::string& resultServerAddress)
         : dbConnPool(connectionPool), context(context), resultServerAddress(resultServerAddress), resultSocket(context, zmq::socket_type::pull), running(false) {
 
