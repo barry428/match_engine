@@ -6,7 +6,7 @@
 
 MatchingEngine::MatchingEngine(zmq::socket_t& orderSocket, zmq::socket_t& resultSocket, zmq::socket_t& bookSocket)
         : orderSocket(orderSocket), resultSocket(resultSocket), bookSocket(bookSocket), running(false) {
-    // orderSocket.set(zmq::sockopt::subscribe, ""); // 订阅所有消息
+    std::chrono::steady_clock::time_point lastPublishTime;
 }
 
 void MatchingEngine::start() {
@@ -33,7 +33,6 @@ void MatchingEngine::run() {
                     Json::Value message = deserializeMessage(orderData);
                     Json::Value nestedOrderMessage = deserializeMessage(message["order"].asString());
                     Order order = deserializeOrder(nestedOrderMessage);
-                    double filled = order.filledQuantity;
                     processOrder(order);
                 }
             } else {
@@ -93,86 +92,78 @@ void MatchingEngine::matchOrders(Order& order, std::map<double, std::map<unsigne
 
 }
 
-void MatchingEngine::publishOrderBook() {
-    std::string orderBookData = formatOrderBook();
-    zmq::message_t message(orderBookData.c_str(), orderBookData.size());
-    bookSocket.send(message, zmq::send_flags::none);
-    LOG_DEBUG("Published order book");
-}
+void MatchingEngine::matchBuyOrders(Order& buyOrder, std::map<double, std::map<unsigned int, Order>>& sellOrders,
+                                    std::map<double, std::map<unsigned int, Order>>& buyOrders) {
+    // 遍历卖订单，优先匹配最低的卖价
+    for (auto it = sellOrders.begin(); it != sellOrders.end() && buyOrder.quantity > buyOrder.filledQuantity; ) {
+        double sellPrice = it->first;
 
-void MatchingEngine::matchBuyOrders(Order& order, std::map<double, std::map<unsigned int, Order>>& oppositeOrders,
-                                    std::map<double, std::map<unsigned int, Order>>& ownOrders) {
-    auto it = oppositeOrders.begin();
-    while (it != oppositeOrders.end() && order.quantity > order.filledQuantity) {
-        double bestPrice = it->first;
-        LOG_DEBUG("Attempting to match buy order. BuyOrderID: " + std::to_string(order.orderId) +
-                 ", BuyPrice: " + std::to_string(order.price) + ", BestSellPrice: " + std::to_string(bestPrice));
-        if (order.price >= bestPrice) {
-            auto& ordersAtPrice = it->second;
-            for (auto orderIt = ordersAtPrice.begin(); orderIt != ordersAtPrice.end() && order.quantity > order.filledQuantity; ) {
-                Order& oppositeOrder = orderIt->second;
-                LOG_DEBUG("Processing trade. BuyOrderID: " + std::to_string(order.orderId) + ", SellOrderID: " + std::to_string(oppositeOrder.orderId));
-                processTrade(order, oppositeOrder);
-
-                if (oppositeOrder.filledQuantity >= oppositeOrder.quantity) {
-                    LOG_DEBUG("matchOrders Update Order Status. FULLY_FILLED OrderId : " + std::to_string(oppositeOrder.orderId));
-                    orderIt = ordersAtPrice.erase(orderIt);
-                } else {
-                    // 更新订单状态
-                    LOG_DEBUG("matchOrders Update Order Status. PARTIALLY_FILLED OrderId: " + std::to_string(oppositeOrder.orderId) + " filledQuantity: " + std::to_string(oppositeOrder.filledQuantity));
-                    addOrderToBook(oppositeOrder, oppositeOrders);
-                    ++orderIt;
-                }
-            }
-
-            if (ordersAtPrice.empty()) {
-                LOG_DEBUG("All sell orders at price " + std::to_string(bestPrice) + " have been matched.");
-                it = oppositeOrders.erase(it);
-            } else {
-                ++it;
-            }
-        } else {
+        // 如果买单价格小于卖单价格，停止匹配
+        if (buyOrder.price < sellPrice) {
             break;
+        }
+
+        auto& ordersAtPrice = it->second;
+        for (auto orderIt = ordersAtPrice.begin(); orderIt != ordersAtPrice.end() && buyOrder.quantity > buyOrder.filledQuantity; ) {
+            Order& sellOrder = orderIt->second;
+
+            // 进行交易处理
+            processTrade(buyOrder, sellOrder);
+
+            // 如果卖单已完全成交，移除该卖单
+            if (sellOrder.filledQuantity >= sellOrder.quantity) {
+                orderIt = ordersAtPrice.erase(orderIt);
+            } else {
+                // 卖单部分成交，更新后继续
+                ++orderIt;
+            }
+        }
+
+        // 如果该价格下的所有卖单都已处理完，移除该价格节点
+        if (ordersAtPrice.empty()) {
+            it = sellOrders.erase(it);
+        } else {
+            ++it;
         }
     }
 }
 
-void MatchingEngine::matchSellOrders(Order& order, std::map<double, std::map<unsigned int, Order>>& oppositeOrders,
-                                     std::map<double, std::map<unsigned int, Order>>& ownOrders) {
-    auto it = oppositeOrders.rbegin();
-    while (it != oppositeOrders.rend() && order.quantity > order.filledQuantity) {
-        double bestPrice = it->first;
-        LOG_DEBUG("Attempting to match sell order. SellOrderID: " + std::to_string(order.orderId) +
-                 ", SellPrice: " + std::to_string(order.price) + ", BestBuyPrice: " + std::to_string(bestPrice));
-        if (order.price <= bestPrice) {
-            auto& ordersAtPrice = it->second;
-            for (auto orderIt = ordersAtPrice.begin(); orderIt != ordersAtPrice.end() && order.quantity > order.filledQuantity; ) {
-                Order& oppositeOrder = orderIt->second;
-                LOG_DEBUG("Processing trade. SellOrderID: " + std::to_string(order.orderId) + ", BuyOrderID: " + std::to_string(oppositeOrder.orderId));
-                processTrade(order, oppositeOrder);
+void MatchingEngine::matchSellOrders(Order& sellOrder, std::map<double, std::map<unsigned int, Order>>& buyOrders,
+                                     std::map<double, std::map<unsigned int, Order>>& sellOrders) {
+    // 使用反向迭代器，从最高买价开始匹配
+    for (auto it = buyOrders.rbegin(); it != buyOrders.rend() && sellOrder.quantity > sellOrder.filledQuantity; ) {
+        double buyPrice = it->first;
 
-                if (oppositeOrder.filledQuantity >= oppositeOrder.quantity) {
-                    LOG_DEBUG("matchOrders Update Order Status. FULLY_FILLED OrderId : " + std::to_string(oppositeOrder.orderId));
-                    orderIt = ordersAtPrice.erase(orderIt);
-                } else {
-                    // 更新订单状态
-                    LOG_DEBUG("matchOrders Update Order Status. PARTIALLY_FILLED OrderId: " + std::to_string(oppositeOrder.orderId) + " filledQuantity: " + std::to_string(oppositeOrder.filledQuantity));
-                    addOrderToBook(oppositeOrder, oppositeOrders);
-                    ++orderIt;
-                }
-            }
-
-            if (ordersAtPrice.empty()) {
-                LOG_DEBUG("All buy orders at price " + std::to_string(bestPrice) + " have been matched.");
-                it = std::map<double, std::map<unsigned int, Order>>::reverse_iterator(oppositeOrders.erase(std::next(it).base()));
-            } else {
-                ++it;
-            }
-        } else {
+        // 如果卖单价格高于买单价格，停止匹配
+        if (sellOrder.price > buyPrice) {
             break;
+        }
+
+        auto& ordersAtPrice = it->second;
+        for (auto orderIt = ordersAtPrice.begin(); orderIt != ordersAtPrice.end() && sellOrder.quantity > sellOrder.filledQuantity; ) {
+            Order& buyOrder = orderIt->second;
+
+            // 执行交易
+            processTrade(sellOrder, buyOrder);
+
+            // 如果买单已完全成交，移除该买单
+            if (buyOrder.filledQuantity >= buyOrder.quantity) {
+                orderIt = ordersAtPrice.erase(orderIt);
+            } else {
+                // 买单部分成交，更新后继续
+                ++orderIt;
+            }
+        }
+
+        // 如果该价格下的所有买单都已处理完，移除该价格节点
+        if (ordersAtPrice.empty()) {
+            it = std::map<double, std::map<unsigned int, Order>>::reverse_iterator(buyOrders.erase(std::next(it).base()));
+        } else {
+            ++it;
         }
     }
 }
+
 
 void MatchingEngine::processTrade(Order& order, Order& oppositeOrder) {
 
@@ -221,8 +212,8 @@ TradeRecord MatchingEngine::createTradeRecord(const Order& buyOrder, const Order
     trade.orderType = orderType;
     trade.tradePrice = tradePrice;
     trade.tradeQuantity = tradeQuantity;
-    trade.buyerFee = roundToPrecision(buyOrder.feeRate * tradeQuantity * tradePrice, 6);
-    trade.sellerFee = roundToPrecision(sellOrder.feeRate * tradeQuantity * tradePrice, 6);
+    trade.buyerFee = roundToPrecision(buyOrder.feeRate * tradeQuantity * tradePrice, 8);
+    trade.sellerFee = roundToPrecision(sellOrder.feeRate * tradeQuantity * tradePrice, 8);
     trade.tradeTime = std::chrono::system_clock::now();
     return trade;
 }
@@ -230,6 +221,18 @@ TradeRecord MatchingEngine::createTradeRecord(const Order& buyOrder, const Order
 double MatchingEngine::roundToPrecision(double value, int precision) {
     double factor = std::pow(10.0, precision);
     return std::round(value * factor) / factor;
+}
+
+void MatchingEngine::publishOrderBook() {
+    auto now = std::chrono::steady_clock::now();
+    // 每秒最多发布一次订单簿
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - lastPublishTime).count() >= 1) {
+        lastPublishTime = now;
+        std::string orderBookData = formatOrderBook();
+        zmq::message_t message(orderBookData.c_str(), orderBookData.size());
+        bookSocket.send(message, zmq::send_flags::none);
+        LOG_DEBUG("Published order book");
+    }
 }
 
 std::string MatchingEngine::formatOrderBook() {

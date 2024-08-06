@@ -41,6 +41,9 @@ private:
 
     std::map<double, std::map<unsigned int, Order>> buyOrders;
     std::map<double, std::map<unsigned int, Order>> sellOrders;
+
+    // 用于控制订单簿发布频率的变量
+    std::chrono::steady_clock::time_point lastPublishTime;
 };
 
 // 声明外部日志函数
